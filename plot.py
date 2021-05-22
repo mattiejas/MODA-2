@@ -6,7 +6,7 @@ def plot_solution(p):
 
     for i in range(len(s)):
         if s[i]:
-            circle1 = plt.Circle((x[i], y[i]), 10, color='r')
+            circle1 = plt.Circle((x[i], y[i]), 5, color='k', linewidth=1, fill=False)
             plt.gca().add_patch(circle1)
 
     plt.xlim((0, a))
