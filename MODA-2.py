@@ -4,10 +4,13 @@ import time
 from tqdm import trange
 from plot import plot_solution
 
-t_max = 1000
-p_size = 50
-step_size = np.random.uniform(0, 1, size=(5, 45))
+t_max = 20000
+p_size = 2
+# Max step size
+# a, b, x, y, s
+step_size = [.1, .1, .1, .1, 0.35]
 number_of_starting = 5
+
 
 def generate_individual():
     # (a, b, x1...xk, y1...yk, s1...sk)
@@ -75,20 +78,73 @@ def calculate_overlap_penalty(p, i, j):
 
 
 def evaluate(p):
-    feasibility_score = calculate_feasibility(p)
+    feasibility_score = np.array(calculate_feasibility(p))
     k = p[0] * p[1] / (25 * math.pi)
 
+    if feasibility_score[2] == 0:
+        feasibility_score[0] **= 2
+        feasibility_score[1] **= 2
     # feasible, number of cookies, area
-    return [(45 - np.sum(p[4])) ** 2, (p[0] * p[1]), *feasibility_score]
+    return [45 - np.sum(p[4]), (p[0] * p[1]), *feasibility_score]
 
 
 def mutate(p):
-    p[0] += step_size[0][0] * np.random.normal()
-    p[1] += step_size[1][0] * np.random.normal()
-    p[2] = np.array([x + step_size[2][i] * np.random.normal() for i, x in enumerate(p[2])])
-    p[3] = np.array([x + step_size[3][i] * np.random.normal() for i, x in enumerate(p[3])])
-    p[4] = np.array([x if np.random.uniform(0, 1) > step_size[4][i] else int(not x) for i, x in enumerate(p[4])])
+    p[0] = np.clip(p[0] + step_size[0] * np.random.normal(), 0, 100)
+    p[1] = np.clip(p[1] + step_size[1] * np.random.normal(), 0, 100)
+    p[2] = np.array([x + step_size[2] * np.random.normal() for x in p[2]])
+    p[3] = np.array([x + step_size[3] * np.random.normal() for x in p[3]])
+    p[4] = np.array([x if np.random.uniform(0, 1) > step_size[4] else int(not x) for x in p[4]])
     return p
+
+
+def discrete_recombination(P):
+    offsprings = []
+
+    # Repeat p_size times.
+    for _ in range(p_size):
+        # Sample random individuals
+        idxs = np.random.randint(0, len(P), 2)
+        individuals = [P[idxs[0]], P[idxs[1]]]
+
+        # Means for a, b
+        offspring = []
+        offspring.append(np.mean([individuals[0][0], individuals[1][0]]))
+        offspring.append(np.mean([individuals[0][1], individuals[1][1]]))
+
+        # Take either a circle from a or from b
+        parent_index = np.random.randint(low=0, high=len(idxs), size=len(individuals[0][2]))
+
+        cookies = np.array([[individuals[p_i][2][i], individuals[p_i][3][i], individuals[p_i][4][i]] for i, p_i in enumerate(parent_index)])
+        # cookes is of shape (45, 3)
+        offspring.append(cookies[:, 0])
+        offspring.append(cookies[:, 1])
+        offspring.append(cookies[:, 2])
+
+        offsprings.append(offspring)
+
+    return offsprings
+
+
+def selection(P, scores):
+    # Basic u,l tournament selection.
+    tournament = np.array([(x, y) for x, y in zip(P, scores)], dtype='object')
+    np.random.shuffle(tournament)
+    winners = []
+    performances = []
+    for _ in range(p_size):
+        a = tournament[np.random.randint(0, high=len(population))]
+        b = tournament[np.random.randint(0, high=len(population))]
+
+        winning = [a, b][np.argmin([a[1], b[1]])]
+
+        winners.append(winning[0].copy())
+        performances.append(winning[1])
+
+    return winners, np.array(performances)
+
+
+def recombine():
+    pass
 
 
 def calculate_crowding(scores):
@@ -127,9 +183,8 @@ def calculate_crowding(scores):
             normed_scores[:, col])
 
         # Calculate crowding distance for each individual
-        crowding[1:population_size - 1] = \
-            (sorted_scores[2:population_size] -
-             sorted_scores[0:population_size - 2])
+        crowding[1:population_size - 1] = (sorted_scores[2:population_size] -
+                                           sorted_scores[0:population_size - 2])
 
         # resort to orginal order (two steps)
         re_sort_order = np.argsort(sorted_scores_index)
@@ -153,29 +208,22 @@ if __name__ == '__main__':
 
     tq = trange(t_max)
     for t in tq:
-        # generate
-        idx = np.random.randint(0, p_size)
-        x_new = np.copy(population[idx]).tolist()
-        population = [*population, mutate(x_new)]
+        # Recombine
+        population = discrete_recombination(population)
 
-        # evaluate
+        # Mutate
+        population = [mutate(p) for p in population]
+
+        # Evaluate
         evaluation = np.array([evaluate(x) for x in population])
-        # f1 = evaluation[:, 0]
-        # f2 = evaluation[:, 1]
-        # feasibility = evaluation[:, 2]
+        score = np.mean(evaluation, axis=1)
+        # calculate_crowding(evaluation[:, :-1])
 
-        score = calculate_crowding(evaluation[:, :-1])
+        # Select
+        population, _ = selection(population, score)
+
         feasibility = evaluation[:, -1]
-
-        # delete random candidate
-        candidate = None
         infeasible_solutions = np.argwhere(feasibility == False).flatten()
-        if len(infeasible_solutions) > 0:  # select random infeasible candidate
-            candidate = np.random.choice(infeasible_solutions)
-        else:  # select worst
-            candidate = np.argmin(score)
-
-        del population[candidate]
 
         tq.set_description(f't = {t}, min score = {round(np.min(score), 3)}, avg score = {round(np.mean(score), 3)}')
         t += 1
