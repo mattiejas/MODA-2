@@ -1,11 +1,16 @@
+# %%
+from pareto import plot_pereto
+import seaborn as sns
 import numpy as np
 import math
 import time
 from tqdm import trange
 from plot import plot_solution
+import matplotlib.pyplot as plt
 
-t_max = 10000
-p_size = 8
+# %%
+t_max = 1000
+p_size = 50
 # Max step size
 # a, b, x, y, s
 step_size = [.5, .5, .5, .5, 0.05]
@@ -213,8 +218,7 @@ def normalize_scores(evaluation):
     #     ptp[idxs] = 1
     # evaluation_normed = (evaluation - evaluation.min(0)) / ptp
     # return np.mean(evaluation_normed, axis=1)
-    return np.mean(evaluation, axis=1)
-    # return calculate_crowding(evaluation)
+    return calculate_crowding(evaluation)
 
 
 if __name__ == '__main__':
@@ -229,6 +233,8 @@ if __name__ == '__main__':
     score = normalize_scores(evaluation)
 
     avg_scores = []
+    f1 = []
+    f2 = []
 
     tq = trange(t_max)
     for t in tq:
@@ -247,7 +253,7 @@ if __name__ == '__main__':
         n_score = normalize_scores(evaluation)
 
         # Select
-        population, score = proportional_selection([*m_population, *population], [*n_score, *score])
+        population, score = selection([*m_population, *population], [*n_score, *score])
 
         infeasible_solutions = np.argwhere(feasibility == False).flatten()
 
@@ -259,17 +265,17 @@ if __name__ == '__main__':
     print(f'done in {delta} seconds.')
     plot_solution(population[np.argmin(score)])
 
-# minimize the amount of remaining dough
-# maximize the number of cookies
+# %%
+sns.set_theme()
+sns.lineplot(y=avg_scores, x=np.arange(0, len(avg_scores)))
+plt.xlabel('Generation')
+plt.ylabel('Objective value')
+plt.savefig('amazinggraph_tournament.pdf')
 
-# 35 · 100/(5 · 5π) ≈ 44.563
-# area of a single cookie is 25pi
+# %%
+f1 = 45 - evaluation[:, 0]
+f2 = evaluation[:, 1]
 
-# constraint
-# 5 ≤ xi ≤ a − 5, 5 ≤ yi ≤ b − 5, i = 1, ..., k
-
-# objectives
-# sum of active cookies
-# area of dough
-
-# individual
+xy = np.stack([f1, f2], axis=1)
+plot_pereto(xy)
+# %%

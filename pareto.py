@@ -1,3 +1,5 @@
+# %%
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -45,3 +47,5 @@ def plot_pereto(population):
 
 if __name__ == '__main__':
     plot_pereto(np.random.random((20, 2)))
+
+# %%
