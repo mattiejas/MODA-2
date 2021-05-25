@@ -83,7 +83,7 @@ def evaluate(p):
         score **= 2
 
     # Number of cookies, area, feasility
-    return [45 - np.sum(p[4]), max(100, (p[0] * p[1])), score, feasible]
+    return [45 - np.sum(p[4]), (p[0] * p[1]), score, feasible]
 
 
 def mutate(p):
@@ -228,6 +228,8 @@ if __name__ == '__main__':
     evaluation = evaluation[:, :-1]
     score = normalize_scores(evaluation)
 
+    avg_scores = []
+
     tq = trange(t_max)
     for t in tq:
         # Recombine
@@ -250,6 +252,7 @@ if __name__ == '__main__':
         infeasible_solutions = np.argwhere(feasibility == False).flatten()
 
         tq.set_description(f't = {t}, min score = {round(np.min(score), 3)}, avg score = {round(np.mean(score), 3)}')
+        avg_scores.append(np.mean(score))
         t += 1
 
     delta = time.time() - seconds
