@@ -4,11 +4,12 @@ import time
 from tqdm import trange
 from plot import plot_solution
 
-t_max = 20000
-p_size = 2
+t_max = 10000
+p_size = 8
 # Max step size
 # a, b, x, y, s
-step_size = [.1, .1, .1, .1, 0.35]
+step_size = [.5, .5, .5, .5, 0.05]
+crossover_rate = 0.2
 number_of_starting = 5
 
 
@@ -35,16 +36,13 @@ def init_population(amount=2):
 
 def calculate_feasibility(p):
     a, b, x, y, s = p
-    incorrect_pos_penalty = 0
     incorrect_overlap_penalty = 0
 
     for i in range(len(p[4])):
-        incorrect_pos_penalty += calculate_position_penalty(p, i)
-
         for j in range(i + 1, len(p[4])):
             incorrect_overlap_penalty += calculate_overlap_penalty(p, i, j)
 
-    return incorrect_pos_penalty, incorrect_overlap_penalty, not bool(incorrect_pos_penalty + incorrect_overlap_penalty)
+    return incorrect_overlap_penalty, not bool(incorrect_overlap_penalty)
 
 
 def calculate_position_penalty(p, i):
@@ -78,21 +76,21 @@ def calculate_overlap_penalty(p, i, j):
 
 
 def evaluate(p):
-    feasibility_score = np.array(calculate_feasibility(p))
+    score, feasible = calculate_feasibility(p)
     k = p[0] * p[1] / (25 * math.pi)
 
-    if feasibility_score[2] == 0:
-        feasibility_score[0] **= 2
-        feasibility_score[1] **= 2
-    # feasible, number of cookies, area
-    return [45 - np.sum(p[4]), (p[0] * p[1]), *feasibility_score]
+    if feasible is False:
+        score **= 2
+
+    # Number of cookies, area, feasility
+    return [45 - np.sum(p[4]), max(100, (p[0] * p[1])), score, feasible]
 
 
 def mutate(p):
-    p[0] = np.clip(p[0] + step_size[0] * np.random.normal(), 0, 100)
-    p[1] = np.clip(p[1] + step_size[1] * np.random.normal(), 0, 100)
-    p[2] = np.array([x + step_size[2] * np.random.normal() for x in p[2]])
-    p[3] = np.array([x + step_size[3] * np.random.normal() for x in p[3]])
+    p[0] = np.clip(p[0] + step_size[0] * np.random.normal(), 10, 100)
+    p[1] = np.clip(p[1] + step_size[1] * np.random.normal(), 10, 35)
+    p[2] = np.array([np.clip(x + step_size[2] * np.random.normal(), 5, p[0] - 5) for x in p[2]])
+    p[3] = np.array([np.clip(x + step_size[3] * np.random.normal(), 5, p[1] - 5) for x in p[3]])
     p[4] = np.array([x if np.random.uniform(0, 1) > step_size[4] else int(not x) for x in p[4]])
     return p
 
@@ -102,6 +100,9 @@ def discrete_recombination(P):
 
     # Repeat p_size times.
     for _ in range(p_size):
+        if np.random.uniform() > crossover_rate:
+            offsprings.append(P[np.random.randint(0, len(P))])
+            continue
         # Sample random individuals
         idxs = np.random.randint(0, len(P), 2)
         individuals = [P[idxs[0]], P[idxs[1]]]
@@ -143,8 +144,14 @@ def selection(P, scores):
     return winners, np.array(performances)
 
 
-def recombine():
-    pass
+def proportional_selection(P, scores):
+    scores = np.array(scores)
+    scores_padded = np.max(scores) - scores + 0.0001
+    probabilities = scores_padded / np.sum(scores_padded)
+
+    idxs = np.random.choice(len(P), size=p_size, p=probabilities)
+
+    return np.array(P, dtype='object')[idxs], scores[idxs]
 
 
 def calculate_crowding(scores):
@@ -199,30 +206,47 @@ def calculate_crowding(scores):
     return crowding_distances
 
 
+def normalize_scores(evaluation):
+    # ptp = evaluation.ptp(0)
+    # if 0 in ptp:
+    #     idxs = np.argwhere(ptp == 0)
+    #     ptp[idxs] = 1
+    # evaluation_normed = (evaluation - evaluation.min(0)) / ptp
+    # return np.mean(evaluation_normed, axis=1)
+    return np.mean(evaluation, axis=1)
+    # return calculate_crowding(evaluation)
+
+
 if __name__ == '__main__':
     seconds = time.time()
 
     # init population
     t = 0
+
     population = init_population(p_size)
+    evaluation = np.array([evaluate(x) for x in population])
+    evaluation = evaluation[:, :-1]
+    score = normalize_scores(evaluation)
 
     tq = trange(t_max)
     for t in tq:
         # Recombine
-        population = discrete_recombination(population)
+        # r_population = discrete_recombination(population)
 
         # Mutate
-        population = [mutate(p) for p in population]
+        m_population = [mutate(p) for p in population]
 
         # Evaluate
-        evaluation = np.array([evaluate(x) for x in population])
-        score = np.mean(evaluation, axis=1)
-        # calculate_crowding(evaluation[:, :-1])
-
-        # Select
-        population, _ = selection(population, score)
+        evaluation = np.array([evaluate(x) for x in m_population])
 
         feasibility = evaluation[:, -1]
+        evaluation = evaluation[:, :-1]
+
+        n_score = normalize_scores(evaluation)
+
+        # Select
+        population, score = proportional_selection([*m_population, *population], [*n_score, *score])
+
         infeasible_solutions = np.argwhere(feasibility == False).flatten()
 
         tq.set_description(f't = {t}, min score = {round(np.min(score), 3)}, avg score = {round(np.mean(score), 3)}')
